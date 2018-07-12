@@ -1,4 +1,4 @@
-package db
+package lib
 
 import (
 	"net"
@@ -9,6 +9,8 @@ import (
 	"bytes"
 	"io/ioutil"
 	"encoding/json"
+	"strconv"
+	"time"
 )
 
 type userIp struct {
@@ -19,13 +21,17 @@ type userIp struct {
 	IdDb   string `json:"_id"`
 }
 
+var users []userIp
+var currentUser userIp
+
 func ConnectUser(userName string) {
-	var users = getUsers()
+	var users = GetUsers()
 	var ip = GetOutboundIP()
 	connected := false
 
 	for _, user := range users {
 		if user.Ip == ip {
+			currentUser = user
 			connected = true
 			setUserOnline(user)
 			break
@@ -35,9 +41,16 @@ func ConnectUser(userName string) {
 	if !connected {
 		insertUser(userName)
 	}
+
+	ConnectUserToSocket()
+	//actualizeUsersList()
 }
 
-func getUsers() []userIp {
+func GetCachedUsers() []userIp {
+	return users
+}
+
+func GetUsers() []userIp {
 	fmt.Println(`Getting a list of users`)
 	client := &http.Client{}
 	req, _ := http.NewRequest("GET", "https://testit-abb9.restdb.io/rest/userips", nil)
@@ -46,10 +59,9 @@ func getUsers() []userIp {
 	req.Header.Add("content-type", `application/json`)
 	r, _ := client.Do(req)
 	body, _ := ioutil.ReadAll(r.Body)
-	var data []userIp
-	json.Unmarshal(body, &data)
+	json.Unmarshal(body, &users)
 
-	return data
+	return users
 }
 
 func insertUser(userName string) {
@@ -64,11 +76,8 @@ func insertUser(userName string) {
 	req.Header.Add("x-apikey", `dd5ea8826752ead9ee67a5ad21be7e43b501f`)
 	req.Header.Add("content-type", `application/json`)
 	client.Do(req)
-	//body, _ := ioutil.ReadAll(r.Body)
-	//fmt.Println(body)
 }
 
-// Get preferred outbound ip of this machine
 func GetOutboundIP() string {
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
@@ -82,10 +91,17 @@ func GetOutboundIP() string {
 }
 
 func setUserOnline(user userIp) {
-	fmt.Println(`Seting online`)
-	//s := []string{`{"name":"`, user.Name, `","ip":"`, user.Ip, `","online":true}`}
-	//var jsonStr = []byte(strings.Join(s, ""))
-	var jsonStr = []byte(`{"online":true}`)
+	fmt.Println(`Setting online`)
+	setUserOnlineStatus(user, true)
+}
+
+func SetUserOffline() {
+	SendMessage(Message{Who: currentUser.Name, Message: "left chat"})
+	setUserOnlineStatus(currentUser, false)
+}
+
+func setUserOnlineStatus(user userIp, status bool) {
+	var jsonStr = []byte(strings.Join([]string{`{"online":`, strconv.FormatBool(status), `}`}, ""))
 	var url = strings.Join([]string{"https://testit-abb9.restdb.io/rest/userips/", user.IdDb}, "")
 
 	client := &http.Client{}
@@ -95,4 +111,20 @@ func setUserOnline(user userIp) {
 	req.Header.Add("content-type", `application/json`)
 	r, _ := client.Do(req)
 	ioutil.ReadAll(r.Body)
+}
+
+func actualizeUsersList() {
+	ticker := time.NewTicker(5 * time.Second)
+	quit := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				GetUsers()
+			case <-quit:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
 }

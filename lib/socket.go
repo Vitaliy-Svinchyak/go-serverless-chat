@@ -1,14 +1,11 @@
-package socket
+package lib
 
 import (
-	"bufio"
 	"fmt"
 	"net"
-	"os"
 	"strings"
-	"encoding/json"
-	"chatting/gui"
 	"bytes"
+	"encoding/json"
 )
 
 type ClientManager struct {
@@ -23,17 +20,17 @@ type Client struct {
 	data   chan []byte
 }
 
+var connections = map[string]net.Conn{}
+
 func (manager *ClientManager) start() {
 	for {
 		select {
 		case connection := <-manager.register:
 			manager.clients[connection] = true
-			//fmt.Println("Added new connection!")
 		case connection := <-manager.unregister:
 			if _, ok := manager.clients[connection]; ok {
 				close(connection.data)
 				delete(manager.clients, connection)
-				//fmt.Println("A connection has terminated!")
 			}
 		case message := <-manager.broadcast:
 			for connection := range manager.clients {
@@ -59,7 +56,7 @@ func (manager *ClientManager) receive(client *Client) {
 		}
 		message = bytes.Trim(message, "\x00")
 		if length > 0 {
-			gui.NewMessage(message)
+			NewMessage(message)
 			//fmt.Println("RECEIVED: " + string(message))
 			manager.broadcast <- message
 		}
@@ -94,8 +91,7 @@ func (manager *ClientManager) send(client *Client) {
 	}
 }
 
-func StartServer(userName string) {
-	//fmt.Println("Starting server...")
+func StartServer() {
 	listener, error := net.Listen("tcp", ":12345")
 	if error != nil {
 		fmt.Println(error)
@@ -123,20 +119,31 @@ func StartServer(userName string) {
 	}()
 }
 
-func ConnectToTheServer(userName string) {
-	//fmt.Println("Starting client...")
-	connection, error := net.Dial("tcp", "localhost:12345")
+func ConnectToTheServer(host string) {
+	connection, error := net.Dial("tcp", strings.Join([]string{host, "12345"}, ":"))
+	connections[host] = connection
 	if error != nil {
 		fmt.Println(error)
 	}
 	client := &Client{socket: connection}
 	go client.receive()
+}
 
-	for {
-		reader := bufio.NewReader(os.Stdin)
-		message, _ := reader.ReadString('\n')
-		var mess = gui.Message{Who: userName, Message: message}
-		messageJson, _ := json.Marshal(mess)
+func ConnectUserToSocket() {
+	StartServer()
+	var users = GetCachedUsers()
+
+	for _, user := range users {
+		if user.Online {
+			fmt.Println("Connecting", user)
+			ConnectToTheServer(user.Ip)
+		}
+	}
+}
+
+func SendMessage(message Message) {
+	for _, connection := range connections {
+		messageJson, _ := json.Marshal(message)
 		connection.Write([]byte(strings.TrimRight(string(messageJson), "\n")))
 	}
 }

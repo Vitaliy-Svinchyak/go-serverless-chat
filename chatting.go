@@ -1,10 +1,8 @@
 package main
 
 import (
-	//"chatting/db"
-	"chatting/socket"
 	"os"
-	"chatting/gui"
+	"chatting/lib"
 )
 
 var messages []string
@@ -13,9 +11,9 @@ func main() {
 	argsWithProg := os.Args
 	var userName = argsWithProg[1]
 
-	socket.ConnectToTheServer(userName)
+	//socket.ConnectToTheServer(userName)
 	//socket.StartServer(userName)
+	lib.ConnectUser(userName)
 
-	//db.ConnectUser(userName)
-	gui.PaintGui(userName)
+	lib.PaintGui(userName)
 }

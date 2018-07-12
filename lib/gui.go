@@ -1,10 +1,9 @@
-package gui
+package lib
 
 import (
 	"fmt"
 	"log"
 	"strings"
-
 	"github.com/jroimartin/gocui"
 	"encoding/json"
 	"io/ioutil"
@@ -135,12 +134,16 @@ func PaintGui(user string) {
 }
 
 func quit(g *gocui.Gui, v *gocui.View) error {
+	SetUserOffline()
 	return gocui.ErrQuit
 }
 
 func handleEnter(g *gocui.Gui, view *gocui.View) error {
-	messages = append(messages, Message{Who: userName, Message: string(inputBuff)})
+	var message = Message{Who: userName, Message: string(inputBuff)}
+	messages = append(messages, message)
+	SendMessage(message)
 	renderMessages()
+
 	return nil
 }
 
@@ -157,8 +160,8 @@ func getMessagesBuff() string {
 func NewMessage(message []byte) {
 	var messObj = Message{}
 	json.Unmarshal(message, &messObj)
-	messObj.Message = messObj.Message[:len(messObj.Message)-1]
 	messages = append(messages, messObj)
+	whriteTofile(message)
 	gu.Update(func(g *gocui.Gui) error {
 		renderMessages()
 
