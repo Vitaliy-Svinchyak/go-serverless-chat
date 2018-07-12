@@ -43,7 +43,7 @@ func ConnectUser(userName string) {
 	}
 
 	ConnectUserToSocket()
-	//actualizeUsersList()
+	actualizeUsersList()
 }
 
 func GetCachedUsers() []userIp {
@@ -116,11 +116,17 @@ func setUserOnlineStatus(user userIp, status bool) {
 func actualizeUsersList() {
 	ticker := time.NewTicker(5 * time.Second)
 	quit := make(chan struct{})
+
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
-				GetUsers()
+				var users = GetUsers()
+				var userList []string
+				for _, user := range users {
+					userList = append(userList, user.Name)
+				}
+				SetUserList(userList)
 			case <-quit:
 				ticker.Stop()
 				return

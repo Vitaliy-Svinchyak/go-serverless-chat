@@ -11,19 +11,79 @@ import (
 
 var userName = ""
 var gu *gocui.Gui
+var userList []string
+var messages []Message
 
 type Message struct {
 	Who     string
 	Message string
 }
 
-var messages []Message
-
 type Label struct {
 	name string
 	x, y int
 	w, h int
 	body string
+}
+
+type UserList struct {
+	Users []string
+	x, y  int
+	w, h  int
+}
+
+func PaintGui(user string) {
+	userName = user
+	g, err := gocui.NewGui(gocui.OutputNormal)
+	gu = g
+	maxX, maxY := g.Size()
+	if err != nil {
+		log.Panicln(err)
+	}
+	defer g.Close()
+
+	g.Cursor = true
+
+	label := newLabel("label", 0, 0, "")
+	input := newInput("input", 0, maxY-3, maxX-3, 50)
+	userList := newUserList(maxX-25, 0)
+	focus := gocui.ManagerFunc(setFocus("input"))
+	g.SetManager(label, userList, input, focus)
+
+	if err := g.SetKeybinding("", gocui.KeyCtrlC, gocui.ModNone, quit); err != nil {
+		log.Panicln(err)
+	}
+
+	if err := g.SetKeybinding("", gocui.KeyEnter, gocui.ModNone, handleEnter); err != nil {
+		log.Panicln(err)
+	}
+
+	if err := g.MainLoop(); err != nil && err != gocui.ErrQuit {
+		log.Panicln(err)
+	}
+}
+
+func newUserList(x, y int) *UserList {
+	w := 22
+	h := 10
+
+	return &UserList{x: x, y: y, w: w, h: h}
+}
+
+func (l *UserList) Layout(g *gocui.Gui) error {
+	v, err := g.SetView("userList", l.x, l.y, l.x+l.w, l.y+l.h)
+	if err != nil {
+		if err != gocui.ErrUnknownView {
+			return err
+		}
+		v.Frame = true
+		fmt.Fprint(v, "Users online:\n")
+		fmt.Fprint(v, strings.Join(userList, ", "))
+	} else {
+		return err
+	}
+
+	return nil
 }
 
 func newLabel(name string, x, y int, body string) *Label {
@@ -103,36 +163,6 @@ func setFocus(name string) func(g *gocui.Gui) error {
 	}
 }
 
-func PaintGui(user string) {
-	userName = user
-	g, err := gocui.NewGui(gocui.OutputNormal)
-	gu = g
-	maxX, maxY := g.Size()
-	if err != nil {
-		log.Panicln(err)
-	}
-	defer g.Close()
-
-	g.Cursor = true
-
-	label := newLabel("label", 0, 0, "")
-	input := newInput("input", 0, maxY-3, maxX-3, 50)
-	focus := gocui.ManagerFunc(setFocus("input"))
-	g.SetManager(label, input, focus)
-
-	if err := g.SetKeybinding("", gocui.KeyCtrlC, gocui.ModNone, quit); err != nil {
-		log.Panicln(err)
-	}
-
-	if err := g.SetKeybinding("", gocui.KeyEnter, gocui.ModNone, handleEnter); err != nil {
-		log.Panicln(err)
-	}
-
-	if err := g.MainLoop(); err != nil && err != gocui.ErrQuit {
-		log.Panicln(err)
-	}
-}
-
 func quit(g *gocui.Gui, v *gocui.View) error {
 	SetUserOffline()
 	return gocui.ErrQuit
@@ -161,7 +191,6 @@ func NewMessage(message []byte) {
 	var messObj = Message{}
 	json.Unmarshal(message, &messObj)
 	messages = append(messages, messObj)
-	whriteTofile(message)
 	gu.Update(func(g *gocui.Gui) error {
 		renderMessages()
 
@@ -170,18 +199,31 @@ func NewMessage(message []byte) {
 }
 
 func renderMessages() {
-	v, err := gu.View("label")
-	if err != nil {
-		// handle error
-	}
+	v, _ := gu.View("label")
 	v.Clear()
 	fmt.Fprintln(v, getMessagesBuff())
-	vIn, err := gu.View("input")
+	vIn, _ := gu.View("input")
 	vIn.Clear()
 	vIn.SetCursor(0, 0)
 	inputBuff = []rune{}
 }
 
-func whriteTofile(d1 []byte) {
+func renderUsers() {
+	v, _ := gu.View("userList")
+	v.Clear()
+	v.Rewind()
+}
+
+func writeTofile(d1 []byte) {
 	ioutil.WriteFile("./debug", d1, 0644)
+}
+
+func SetUserList(users []string) {
+	userList = users
+
+	gu.Update(func(g *gocui.Gui) error {
+		renderUsers()
+
+		return nil
+	})
 }
